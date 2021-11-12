@@ -1,6 +1,8 @@
+#!/usr/bin/env python
 import argparse
 
 import numpy.linalg
+import pandas as pd
 
 import MDAnalysis
 from MDAnalysis.analysis import rms
@@ -17,13 +19,13 @@ def make_parser():
 
 def main(argv):
     parser = make_parser()
-    args = parser.parse_args(argv) 
+    args = parser.parse_args(argv[1:]) 
 
     u = MDAnalysis.Universe(args.gro, args.trr)  # always start with a Universe
 
     NAC = 'backbone and resid 61-95'
     NTERM = 'backbone and resid 1-60'
-    CTERM = 'bckbone and resid 96-140'
+    CTERM = 'backbone and resid 96-140'
 	
     # RMSD
     R = rms.RMSD(u,  # universe to align
@@ -53,13 +55,21 @@ def main(argv):
     cterm = u.select_atoms('protein and name C')[-1]
 
     bb = u.select_atoms('protein and backbone')  # a selection (AtomGroup)
+    data = []
     for ts in u.trajectory:     # iterate through all frames
         r = cterm.position - nterm.position # end-to-end vector from atom positions
         d = numpy.linalg.norm(r)  # end-to-end distance
         rgyr = bb.radius_of_gyration()  # method of AtomGroup
         print("frame = {0}: d = {1} A, Rgyr = {2} A".format(
               ts.frame, d, rgyr))
-
+        data.append((ts.frame, d, rgyr, 
+            NAC.radius_of_gyration(),  
+            NTERM.radius_of_gyration(),  
+            CTERM.radius_of_gyration(),  
+            ))
+    data = pd.DataFrame(data, names=["Frame", "e-e distance", "Backbone Rgyr", "NAC Rgyr", "NTERM Rgyr", "CTERM Rgyr"])
+    data = pd.concat((rmsd_df, q1q2_df.drop(columns="Frame"), data.drop(columns="Frame")), axis=1)
+    data.to_csv("analysis.csv", index=False)
 if __name__ == '__main__':
     import sys
     main(sys.argv)

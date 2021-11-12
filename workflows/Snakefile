@@ -8,7 +8,7 @@ os.environ["OMP_NUM_THREADS"] = "32"
 
 rule all:
   input:
-    "prd.log"
+    "prd.0003"
 
 ##singularity: "docker://gromacs/gromacs"
 
@@ -78,40 +78,57 @@ rule equilibrium1:
   input: "eq1.tpr"
   output: gro=protected("eq1.gro"),
           cpt=protected("eq1.cpt"),
-          trr=protected("eq1.trr"),
+          xtc=protected("eq1.xtc"),
           log=protected("eq1.log")
   threads: 8
   #singularity: "docker://gromacs/gromacs"
   shell: "gmx mdrun -deffnm $(basename {input} .tpr) -ntmpi 1 -ntomp {threads}"
 
 rule setup_equilibrium2:
-  input: mdp="eq2.mdp", gro="eq1.gro"
+  input: mdp="eq2.mdp", gro="eq1.gro", cpt="eq1.cpt"
   output: "eq2.tpr"
   #singularity: "docker://gromacs/gromacs"
-  shell: "gmx grompp -f {input.mdp} -c {input.gro} -p topol.top -r {input.gro} -o {output} -maxwarn 10"
+  shell: "gmx grompp -f {input.mdp} -c {input.gro} -t {input.cpt} -o {output} -maxwarn 10"
+  #shell: "gmx grompp -f {input.mdp} -c {input.gro} -p topol.top -r {input.gro} -o {output} -maxwarn 10"
+  
 
 rule equilibrium2:
-  input: tpr="eq2.tpr", prev="eq1.cpt"
+  input: tpr="eq2.tpr"
   output: gro=protected("eq2.gro"),
           cpt=protected("eq2.cpt"),
-          trr=protected("eq2.trr"),
+          xtc=protected("eq2.xtc"),
           log=protected("eq2.log")
   threads: 8
   #singularity: "docker://gromacs/gromacs"
   shell: "gmx mdrun -deffnm $(basename {input.tpr} .tpr) -ntmpi 1 -ntomp {threads}"
 
+
 rule setup_production:
-  input: mdp="prd.mdp", gro="eq2.gro"
+  input: mdp="prd.mdp", cpt="eq2.cpt", gro="eq2.gro", tpr="eq2.tpr"
   output: "prd.tpr"
   #singularity: "docker://gromacs/gromacs"
-  shell: "gmx grompp -f {input.mdp} -c {input.gro} -p topol.top -r {input.gro} -o {output} -maxwarn 10"
+  shell:
+    "gmx grompp -f {input.mdp} -c {input.gro} -t {input.cpt} -o {output} -maxwarn 10"
 
 
 rule production:
-  input: "prd.tpr"
-  output: gro=protected("prd.gro"), cpt=protected("prd.cpt"), trr=protected("prd.trr"), log=protected("prd.log")
+  input: tpr="prd.tpr"
+  output: gro="prd.gro", cpt="prd.cpt", edr="prd.edr", log="prd.log", xtc="prd.xtc", chk="prd.0001"
   threads: 8
   #singularity: "docker://gromacs/gromacs"
-  shell: "gmx mdrun -deffnm prd "
+  shell: "gmx mdrun -deffnm prd -ntmpi 1 -ntomp {threads} && touch prd.0001"
 
 
+def extend_simulation_inputs(wildcards):
+    prev = int(wildcards.block) - 1
+    return {"chk": f"prd.{prev:04d}"}
+
+
+rule extend_simulation:
+  input: unpack(extend_simulation_inputs)  #gro="prd.gro", cpt="prd.cpt", edr="prd.edr", log="prd.log", xtc="prd.xtc"
+  output: touch("prd.{block}")
+  wildcard_constraints: block="[0-9][0-9][0-9][2-9]|[0-9][0-9][1-9][0-9]|[0-9][1-9][0-9][0-9]|[1-9][0-9][0-9][0-9]"
+  threads: 8
+  params: nsteps = lambda w: int(w.block) * 50000000, prev=lambda w: "{:04d}".format(int(w.block) - 1)
+  #singularity: "docker://gromacs/gromacs"
+  shell: "cp prd.tpr prd.tpr.{params.prev} && cp prd.cpt prd.cpt.{params.prev} && gmx convert-tpr -s prd.tpr -nsteps {params.nsteps} -o prd.tpr && gmx mdrun -deffnm prd -cpi prd.cpt -ntmpi 1 -ntomp {threads} -noappend "
