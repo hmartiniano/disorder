@@ -37,26 +37,24 @@ conda activate -n disorder
 
 1. Edit `notebooks/explore_variants.ipynb` and input a gene of interest and, optionally, known mutations.
 
-2. Edit ```config/config.yml`` if necessary
-
-3. Run the structure prediction pipeline:
+2. Run the structure prediction pipeline:
 ```
-snakemake -s workflows/af2/Snakefile 
+colabfold_batch fasta initial_structures --cpu
 ```
 
-5. Run the system setup for a given pipeline (atomistic or coarse-grained):
+3. Run the system setup for a given pipeline (atomistic or coarse-grained):
 ```
 snakemake -s workflows/setup/md/Snakefile.aa 
 ```
 
-5. cd to the owrking directory and use snakemake to run individual simulations:
+4. cd to the working directory and use snakemake to run individual simulations:
 ```
 cd $workdir 
 cd $mutation
 snakemake -c <number of cores>
 ```
 
-6. Run the analysis scripts in the ``scripts directory```:
+5. Run the analysis scripts in the ```scripts``` directory:
 
 
 ### Copyright
