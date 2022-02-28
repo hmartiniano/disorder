@@ -5,6 +5,7 @@ import os
 
 os.environ["OMP_NUM_THREADS"] = "32"
 
+configfile: "config.yml"
 
 rule all:
   input:
@@ -20,6 +21,7 @@ rule convert_pdb:
   shell:
     "echo '5\n3' | gmx pdb2gmx -f {input} -ignh -o {output.gro}"
 
+
 rule setup_box:
   input: "protein.gro"
   output: "newbox.gro"
@@ -34,7 +36,6 @@ rule solvate:
   #singularity: "docker://gromacs/gromacs"
   shell: "gmx solvate -cp newbox.gro -cs tip4p.gro -o solv.gro -p topol.top"
 
-#wget http://www.mdtutorials.com/gmx/umbrella/Files/ions.mdp
 
 rule setup_add_ions:
   input: "solv.gro"

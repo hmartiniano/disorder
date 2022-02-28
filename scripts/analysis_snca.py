@@ -27,6 +27,10 @@ def main(argv):
 
     u = MDAnalysis.Universe(args.gro, args.trr)  # always start with a Universe
 
+    NAC = 'backbone and resid 61-95'
+    NTERM = 'backbone and resid 1-60'
+    CTERM = 'backbone and resid 96-140'
+	
     # RMSD
     R = rms.RMSD(u,  # universe to align
 		 u,  # reference universe or atomgroup
@@ -35,14 +39,18 @@ def main(argv):
 		 ref_frame=0)  # frame index of the reference
     R.run()
     rmsd_df = pd.DataFrame(R.rmsd,
-                  columns=['Frame', 'Time (ns)', 'RMSD'])
+                  columns=['Frame', 'Time (ns)',
+                           'Backbone', 'NAC',
+                           'NTERM', 'CTERM'])
     rmsd_df.to_csv(basename + "_rmsd.csv", index=False)
 
     # Native Contacts
-    q1q2 = contacts.q1q2(u, 'name CA', radius=CUTOFF).run()
+    q1q2 = contacts.q1q2(u, 'name CA', radius=6).run()
 
     q1q2_df = pd.DataFrame(q1q2.timeseries,
-                       columns=['Frame', 'Q1', 'Q2'])
+                       columns=['Frame',
+                                'Q1',
+                                'Q2'])
     q1q2_df.to_csv(basename + "_contacts.csv", index=False)
 
     # can access via segid (4AKE) and atom name
@@ -51,6 +59,9 @@ def main(argv):
     cterminal = u.select_atoms('protein and name C')[-1]
 
     bb = u.select_atoms('protein and backbone')  # a selection (AtomGroup)
+    nac = u.select_atoms(NAC) 
+    nterm = u.select_atoms(NTERM)
+    cterm = u.select_atoms(CTERM) 
 
     # select CA
     ca = u.select_atoms('name CA')
@@ -65,15 +76,18 @@ def main(argv):
         rgyr = bb.radius_of_gyration()  # method of AtomGroup
         print("frame = {0}: d = {1} A, Rgyr = {2} A".format(
               ts.frame, d, rgyr))
-        data.append((ts.frame, d, rgyr))
+        data.append((ts.frame, d, rgyr, 
+            nac.radius_of_gyration(),  
+            nterm.radius_of_gyration(),  
+            cterm.radius_of_gyration(),  
+            ))
         #self_distances = distances.self_distance_array(ca.positions)
         #ee_distances.append(self_distances) 
     #ee_distances = pd.DataFrame(ee_distances)
     #ee_distances.to_csv(basename + "_distances.csv", header=False, index=False)
-    data = pd.DataFrame(data, columns=["Frame", "e-e distance", "Rgyr"])
+    data = pd.DataFrame(data, columns=["Frame", "e-e distance", "Backbone Rgyr", "NAC Rgyr", "NTERM Rgyr", "CTERM Rgyr"])
     data = pd.concat((rmsd_df, q1q2_df.drop(columns="Frame"), data.drop(columns="Frame")), axis=1)
     data.to_csv(basename + "_analysis.csv", index=False)
-
 if __name__ == '__main__':
     import sys
     main(sys.argv)

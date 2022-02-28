@@ -1,0 +1,49 @@
+# vi: syntax=python
+# vi: ft=python
+
+configfile: "config.yml"
+
+rule all:
+  input:
+    "solv_ions.gro"
+
+##singularity: "docker://gromacs/gromacs"
+
+
+rule convert_pdb:
+  input: "protein.pdb"
+  output: gro="protein.gro", top="topol.top"
+  #singularity: "docker://gromacs/gromacs"
+  shell:
+    "echo '5\n3' | gmx pdb2gmx -f {input} -ignh -o {output.gro}"
+
+
+rule setup_box:
+  input: "protein.gro"
+  output: "newbox.gro"
+  #singularity: "docker://gromacs/gromacs"
+  shell:
+    "echo Protein | gmx editconf -f {input} -o {output} -princ -d 2"
+
+
+rule solvate:
+  input: gro="newbox.gro"
+  output: gro="solv.gro"
+  #singularity: "docker://gromacs/gromacs"
+  shell: "gmx solvate -cp newbox.gro -cs tip4p.gro -o solv.gro -p topol.top"
+
+
+rule setup_add_ions:
+  input: "solv.gro"
+  output: "ions.tpr"
+  #singularity: "docker://gromacs/gromacs"
+  shell: "gmx grompp -f ions.mdp -c solv.gro -p topol.top -o ions.tpr -maxwarn 1"
+
+
+rule add_ions:
+  input: "ions.tpr"
+  output: "solv_ions.gro"
+  #singularity: "docker://gromacs/gromacs"
+  shell: "echo SOL | gmx genion -s ions.tpr -o solv_ions.gro -p topol.top -pname NA -nname CL -neutral -conc 0.1"
+
+ 

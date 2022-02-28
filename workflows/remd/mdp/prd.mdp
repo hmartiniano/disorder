@@ -1,11 +1,11 @@
 
 integrator               = md        
 dt                       = 0.002     ; 2 fs
-nsteps                   = 50000000   ; 100.0 ns
+nsteps                   = 20000000   ; 5.0 ns
 
-nstenergy                = 2000
-nstlog                   = 2000
-nstxout                  = 5000
+nstenergy                = 5000
+nstlog                   = 5000
+nstxout                  = 2000
 
 continuation             = yes
 constraint-algorithm     = lincs
@@ -30,3 +30,16 @@ pcoupl                   = Parrinello-Rahman
 tau_p                    = 2.0
 compressibility          = 4.46e-5
 ref_p                    = 1.0 
+
+pull                     = yes
+pull-ngroups             = 2
+pull-group1-name         = DDC1
+pull-group2-name         = DDC2
+pull-ncoords             = 1
+pull-coord1-type         = umbrella
+pull-coord1-geometry     = distance
+pull-coord1-groups       = 1 2
+pull-coord1-k            = 5000.0
+pull-coord1-rate         = 0.0
+pull-coord1-init         = WINDOW
+pull-coord1-start        = no

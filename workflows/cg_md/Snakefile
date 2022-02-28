@@ -1,0 +1,104 @@
+# vi: syntax=python
+# vi: ft=python
+
+
+rule download_itp:
+  output: "martini_v2.2.itp"
+  shell: "wget http://cgmartini.nl/images/parameters/ITP/martini_v2.2.itp"
+
+rule download ions_itp:
+  output: "martini_v2.0_ions.itp"
+	shell:
+  """wget http://cgmartini.nl/images/parameters/ITP/martini_v2.0_ions.itp &&
+	   sed -i 's/NA+/NA/g' martini_v2.0_ions.itp &&
+	   sed -i 's/CL-/CL/g' martini_v2.0_ions.itp
+  """
+
+rule download_martinize:
+  output: "martinize.py"
+	shell: "wget http://cgmartini.nl/images/tools/martinize/python3/martinize-2.6/martinize.py"
+
+rule download_water:
+  output: "water.gro"
+	shell: "wget http://cgmartini.nl/images/applications/water/water.gro"
+
+rule create_model:
+  input: "maritnize.py", "protein.pdb", "martini_v2.2.itp", "martini_v2.0applicationsns.itp"
+  output: "protein.top", "protein-CG.pdb"
+  shell: "python martinize.py -f protein.pdb -o protein.top -x protein-CG.pdb -p backbone -ff martini22"
+
+rule build_box:
+  input: "protein.top", "protein-CG.pdb"
+  output: "protein-CG.gro"
+  shell: "gmx editconf -f protein-CG.pdb -d 5.0 -bt cubic -o protein-CG.gro && sed -i 's/martini.itp/martini_v2.2.itp/' protein.top"
+
+
+rule setup_minimization_vac:
+  input: "mdp/minimization.mdp", "protein-CG.gro"
+  ouput: "minimization-vac.tpr"
+  shell: "gmx grompp -p protein.top -f mdp/minimization.mdp -c protein-CG.gro -o minimization-vac.tpr"
+
+rule run_mimization_vac:
+  input: "minimization-vac.tpr"
+  ouput: "minimization-vac.log"
+  shell: "gmx mdrun -deffnm minimization-vac -v"
+
+rule solvate:
+  input: "minimization-vac.log", "minimization-vac.gro"
+  ouput: "solvate.log", "system.top"
+  shell: 
+  """
+    gmx solvate -cp minimization-vac.gro -cs water.gro -radius 0.21 -o solvated.gro >& solvate.log &&
+    cp protein.top system.top &&
+    sed '2 i #include "martini_v2.0_ions.itp"' -i system.top &&
+    printf "\nW $(grep 'Number of solvent molecules' solvate.log | awk '{{print $5}}') \n" >> system.top
+  """
+
+rule setup_add_ions:
+  input: "solvate.log", "system.top", "mdp/ions.mdp"
+  output: "ions.tpr"
+  shell: "gmx grompp -f ions.mdp -c solvated.gro -p system.top -o ions.tpr -maxwarn 1"
+
+rule run_add_ions:
+  input: "ions.tpr"
+  output: "solv_ions.gro"
+  shell: "echo W | gmx genion -s ions.tpr -o solv_ions.gro -p system.top -pname NA -nname CL -neutral -conc 0.1"
+
+
+rule setup minimization:
+  input: "solv_ions.gro", "mdp/minimization.mdp" 
+  output: "minimization.tpr"
+  shell: "gmx grompp -p system.top -c solv_ions.gro -f mdp/minimization.mdp -o minimization.tpr"
+
+rule run minimization:
+  input: "minimization.tpr"
+  output: "minimization.gro"
+  shell: "gmx mdrun -deffnm minimization -v"
+
+rule setup_equilibrium:
+  input: "minimization.gro", "mdp/equilibration.mdp"
+  output: "equilibrium.tpr"
+  shell: "gmx grompp -p system.top -c minimization.gro -f mdp/equilibration.mdp -o equilibration.tpr"
+
+rule run_equilibration:
+  input: "equilibration.tpr"
+  output: "equilibration.gro"
+  shell: "gmx mdrun -deffnm equilibration -v"
+
+# Production
+rule setup_production:
+  input: "equilibration.gro", "mdp/dynamics.mdp"
+  output: "dynamic.tpr"
+  shell: "gmx grompp -p system.top -c equilibration.gro -f dynamic.mdp -o dynamic.tpr -maxwarn 1"
+
+rule run_production:
+  intpuput: "dynamic.tpr"
+  output: "dynamic.gro", "dynamic.xtc"
+  shell: "gmx mdrun -deffnm dynamic -v"
+
+rule convert_traj:
+  input: "dynamic.xtc", 
+  output: "dynamic.pdb"
+  shell: "echo 1 1 | gmx trjconv -f dynamic.xtc -s dynamic.tpr -fit rot+trans -o dynamic.pdb -conect"
+
+

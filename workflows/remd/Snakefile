@@ -1,0 +1,162 @@
+# vi: syntax=python
+# vi: ft=python
+
+import os
+
+
+configfile: "config/config.yml"
+
+os.environ["OMP_NUM_THREADS"] = config["threads"]
+
+#TEMPERATURES = [300, 323, 347, 374, 404, 436, 472, 500]
+TEMPERATURES = configfile["remd_temperatures"]
+
+def replica_number(temperature):
+  return TEMPERATURES.index(temperature) + 1
+
+rule all:
+  input:
+    "remd_prd.log"
+
+##singularity: "docker://gromacs/gromacs"
+
+
+rule convert_pdb:
+  input: "protein.pdb"
+  output: gro="protein.gro", top="topol.top"
+  #singularity: "docker://gromacs/gromacs"
+  shell:
+    "echo '5\n3' | gmx_mpi pdb2gmx_mpi -f {input} -ignh -o {output.gro}"
+
+rule setup_box:
+  input: "protein.gro"
+  output: "newbox.gro"
+  #singularity: "docker://gromacs/gromacs"
+  shell:
+    "echo Protein | gmx_mpi editconf -f {input} -o {output} -princ -d 5"
+
+
+rule solvate:
+  input: gro="newbox.gro"
+  output: gro="solv.gro"
+  #singularity: "docker://gromacs/gromacs"
+  shell: "gmx_mpi solvate -cp newbox.gro -cs tip4p.gro -o solv.gro -p topol.top"
+
+#wget http://www.mdtutorials.com/gmx/umbrella/Files/ions.mdp
+
+rule setup_add_ions:
+  input: "solv.gro"
+  output: "ions.tpr"
+  #singularity: "docker://gromacs/gromacs"
+  shell: "gmx_mpi grompp -f mdp/ions.mdp -c solv.gro -p topol.top -o ions.tpr -maxwarn 1"
+
+
+rule add_ions:
+  input: "ions.tpr"
+  output: "solv_ions.gro"
+  #singularity: "docker://gromacs/gromacs"
+  shell: "echo SOL | gmx_mpi genion -s ions.tpr -o solv_ions.gro -p topol.top -pname NA -nname CL -neutral -conc 0.1"
+
+
+rule setup_minimize:
+  input: "solv_ions.gro"
+  output: "em.tpr"
+  #singularity: "docker://gromacs/gromacs"
+  shell: "gmx_mpi grompp -f mdp/minim.mdp -c solv_ions.gro -p topol.top -o em.tpr -maxwarn 10"
+
+
+rule minimize:
+  input: "em.tpr"
+  output: protected("em.gro"), protected("em.log"), protected("em.edr")
+  #singularity: "docker://gromacs/gromacs"
+  threads: 32
+  shell: "gmx_mpi mdrun -v -deffnm em -ntomp {threads}"
+
+
+rule setup_equilibrium:
+  input: "em.gro"
+  output: "npt.tpr"
+  #singularity: "docker://gromacs/gromacs"
+  shell: "gmx_mpi grompp -f mdp/npt.mdp -c em.gro -p topol.top -r em.gro -o npt.tpr -maxwarn 10"
+
+
+rule run_equilibrium:
+  input: "npt.tpr"
+  output: gro=protected("npt.gro"), cpt=protected("npt.cpt"), trr=protected("npt.trr"), log=protected("npt.log")
+  threads: 32
+  #singularity: "docker://gromacs/gromacs"
+  shell: "gmx_mpi mdrun -deffnm npt -ntomp {threads}"
+
+
+rule setup_replicas:
+  input: "npt.gro"
+  output: ""
+
+
+rule setup_remd:
+  input: "npt.gro"
+  output: expand("{temperature}/remd_eq1.mdp", temperature=TEMPERATURES),
+          expand("{temperature}/remd_eq2.mdp", temperature=TEMPERATURES),
+          expand("{temperature}/remd_prd.mdp", temperature=TEMPERATURES)
+  shell:
+    """
+    for temperature in {TEMPERATURES}
+    do
+      echo $temperature
+      mkdir temperature
+      sed s,298.15,$temperature, mdp/remd_eq1.mdp > ${{temperature}}/remd_eq1.mdp
+      sed s,298.15,$temperature, mdp/remd_eq2.mdp > ${{temperature}}/remd_eq2.mdp
+      sed s,298.15,$temperature, mdp/remd_prd.mdp > ${{temperature}}/remd_prd.mdp
+    done
+    """
+
+
+rule setup_remd_equilibrium1:
+  input: "{temperature}/remd_eq1.mdp"
+  output: "{temperature}/remd_eq1.tpr"
+  #singularity: "docker://gromacs/gromacs"
+  shell: "gmx_mpi grompp -f {input} -c npt.gro -p topol.top -r npt.gro -o {output} -maxwarn 10"
+
+
+rule remd_equilibrium1:
+  input: "{temperature}/remd_eq1.tpr"
+  output: gro=protected("{temperature}/remd_eq1.gro"),
+          cpt=protected("{temperature}/remd_eq1.cpt"),
+          trr=protected("{temperature}/remd_eq1.trr"),
+          log=protected("{temperature}/remd_eq1.log")
+  threads: 4
+  #singularity: "docker://gromacs/gromacs"
+  shell: "cd {wildcards.temperature} && gmx_mpi mdrun -deffnm $(basename {input} .tpr) -ntomp {threads}"
+
+rule setup_remd_equilibrium2:
+  input: mdp="{temperature}/remd_eq2.mdp", gro="{temperature}/remd_eq1.gro"
+  output: "{temperature}/remd_eq2.tpr"
+  #singularity: "docker://gromacs/gromacs"
+  shell: "gmx_mpi grompp -f {input.mdp} -c {input.gro} -p topol.top -r {input.gro} -o {output} -maxwarn 10"
+
+rule remd_equilibrium2:
+  input: tpr="{temperature}/remd_eq2.tpr", prev="{temperature}/remd_eq1.cpt"
+  output: gro=protected("{temperature}/remd_eq2.gro"),
+          cpt=protected("{temperature}/remd_eq2.cpt"),
+          trr=protected("{temperature}/remd_eq2.trr"),
+          log=protected("{temperature}/remd_eq2.log")
+  threads: 4
+  #singularity: "docker://gromacs/gromacs"
+  shell: "cd {wildcards.temperature} && gmx_mpi mdrun -deffnm $(basename {input.tpr} .tpr) -ntomp {threads}"
+
+rule setup_remd_production:
+  input: mdp="{temperature}/remd_prd.mdp", gro="{temperature}/remd_eq2.gro"
+  output: "{temperature}/remd_prd.tpr"
+  #singularity: "docker://gromacs/gromacs"
+  shell: "gmx_mpi grompp -f {input.mdp} -c {input.gro} -p topol.top -r {input.gro} -o {output} -maxwarn 10"
+
+
+rule remd_production:
+  input: expand("{temperature}/remd_prd.tpr", temperature=TEMPERATURES)
+  output: gro=protected("remd_prd.gro"), cpt=protected("remd_prd.cpt"), trr=protected("remd_prd.trr"), log=protected("remd_prd.log")
+  threads: config["threads"]
+  params: replicas=len(TEMPERATURES), dirs=TEMPERATURES
+  #singularity: "docker://gromacs/gromacs"
+  shell: "mpirun -np {params.replicas} gmx_mpi mdrun -deffnm remd_prd -multidir {params.dirs} >& remd_prd2.log"
+
+
