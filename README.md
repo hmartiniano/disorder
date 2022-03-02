@@ -39,7 +39,7 @@ conda activate -n disorder
 
 2. Run the structure prediction pipeline:
 ```
-colabfold_batch fasta initial_structures --cpu
+./scripts/run_af2.sh <fasta_files> 
 ```
 
 3. Run the system setup for a given pipeline (atomistic or coarse-grained):
