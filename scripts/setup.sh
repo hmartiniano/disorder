@@ -4,9 +4,9 @@ Help()
    # Display Help
    echo "Script to setup a series of molecular dynamics simulations from PDB files."
    echo
-   echo "Syntax: run.sh [-p|s|w|h|v|V]"
+   echo "Syntax: run.sh [-i|s|w|h|v|V]"
    echo "options:"
-   echo "p     PDB files."
+   echo "i     directory with AF2 output directories."
    echo "s     Snakefile."
    echo "w     workdir."
    echo "h     Print this Help."
@@ -18,7 +18,7 @@ Help()
 while getopts p:s:w:h:v:V flag
 do
     case "${flag}" in
-        p) pdb_files=${OPTARG};;
+        i) input_dir=${OPTARG};;
         s) snakefile=${OPTARG};;
         w) workdir=${OPTARG};;
         h) # Display help and exit
@@ -30,14 +30,16 @@ do
     esac
 done
 
-workdir=${workdir:-wordkdir}
+input_dir=${workdir:-initial_structures}
+snakefile=${snakefile:-workflows/md/Snakefile}
+workdir=${workdir:-workdir}
 echo $workdir
 mkdir -p $workdir
 
-for f in $(ls $pdb_files/*.pdb)
+for d in $(ls $input_dir)
 do
-  mkdir -p ${workdir}/${i}
-  cp -r ${snakefile} ${workdir}/${i}
-  cp -r ${f} ${workdir}/${i}/protein.pdb
-  cp -r $(dirname ${snakefile})/mdp ${workdir}/${i}
+  mkdir -p ${workdir}/${d}
+  cp -r ${snakefile} ${workdir}/${d}
+  cp -r ${input_dir}/${d}/${d}_unrelaxed_rank_1_model_1.pdb ${workdir}/${d}/protein.pdb
+  cp -r $(dirname ${snakefile})/mdp/*mdp ${workdir}/${d}
 done
