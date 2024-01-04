@@ -1,8 +1,8 @@
 Disorder
 ==============================
 [//]: # (Badges)
-[![GitHub Actions Build Status](https://github.com/REPLACE_WITH_OWNER_ACCOUNT/disorder/workflows/CI/badge.svg)](https://github.com/REPLACE_WITH_OWNER_ACCOUNT/disorder/actions?query=workflow%3ACI)
-[![codecov](https://codecov.io/gh/REPLACE_WITH_OWNER_ACCOUNT/disorder/branch/master/graph/badge.svg)](https://codecov.io/gh/REPLACE_WITH_OWNER_ACCOUNT/disorder/branch/master)
+[![GitHub Actions Build Status](https://github.com/hmartiniano/disorder/workflows/CI/badge.svg)](https://github.com/hmartiniano/disorder/actions?query=workflow%3ACI)
+[![codecov](https://codecov.io/gh/hmartiniano/disorder/branch/master/graph/badge.svg)](https://codecov.io/gh/hmartiniano/disorder/branch/master)
 
 
 A set of tools and pipelines for molecular dynamics simulations of protein systems.
